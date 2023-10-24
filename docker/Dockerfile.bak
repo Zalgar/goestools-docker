@@ -1,0 +1,46 @@
+# Use a base image with the desired operating system (Debian)
+FROM debian:latest
+
+# Update the package list and install the required packages, including Python 3
+RUN apt-get update && apt-get install -y ca-certificates build-essential pkg-config cmake git zlib1g-dev libairspy-dev libusb-1.0-0-dev git
+
+#setup
+RUN mkdir /goesrecv
+RUN mkdir /goesrecv/config
+RUN cd /goesrecv
+
+#build librtlsdr
+RUN git clone https://github.com/steve-m/librtlsdr.git
+RUN cd /goesrecv/librtlsdr
+RUN mkdir build
+RUN cd /goesrecv/librtlsdr/build
+RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DINSTALL_UDEV_RULES=ON ..
+RUN make -j2 install
+
+#Dont think this is needed for this container, but just incase.
+# Load udev rules and blacklist the DVB driver shipped with the OS
+RUN cp ../rtl-sdr.rules /etc/udev/rules.d/
+RUN ldconfig
+RUN echo 'blacklist dvb_usb_rtl28xxu' | sudo tee --append /etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf
+
+#return to root dir
+RUN cd /goesrecv
+
+#build goestools
+RUN git clone https://github.com/Zalgar/goestools.git
+RUN cd goestools
+RUN mkdir build
+RUN cd build
+RUN cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+RUN make
+RUN make install
+RUN cd ../..
+
+# Copy configuration file and test run goesrecv
+RUN cp /goesrecv/goestools/etc/goesrecv.conf /goesrecv/config/goesrecv.conf
+RUN goesrecv --version
+
+WORKDIR /goesrecv/goestools
+
+CMD ["goesrecv -v -i 1 -c /goesrecv/config/goesrecv.conf"]
+
